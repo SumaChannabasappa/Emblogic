@@ -1,0 +1,50 @@
+#! /bin/bash
+
+make clean -C ./server
+#unlink requestFIFO
+
+buildServer()
+{
+ if (make -C ./Server)
+ then
+	 echo "Server build Successfully"
+	 mv ./Server/server .
+else 
+	echo "Server build Failed"
+	read
+ fi
+}
+
+buildClients()
+{
+	if ( gcc -o rc1 ./Clients/rc1.c )
+	then
+         echo "Client build Successfully"
+else
+    echo "Client build Failed"
+    read
+ fi
+}
+
+buildVendors()
+{
+    if ( make -C ./Vendors )
+    then
+         echo "vendors build Successfully"
+		 mv ./Vendors/adder .
+else
+    echo "vendors build Failed"
+    read
+ fi
+}
+
+buildServer
+buildClients
+buildVendors
+
+read -n1 -p "DO You want to ren the server(y/n)?"
+if [ $REPLY ]
+then
+./server
+fi
+./rc1

@@ -1,0 +1,201 @@
+#include"../Common/headers.h"
+#include"../Common/dataStructures.h"
+#include"../Common/defaults.h"
+#include "declarations.h"
+
+void* creatInfra(void *arg)
+{
+
+	int ret,i;
+	Infra *infra;
+	Result Result;
+#ifdef DEBUG
+	printf("%s: Begin.\n",__func__);
+#endif
+
+	//allocating space for whole structure
+	infra = (Infra*)malloc(sizeof(Infra));
+	if(ret==-1)
+	{
+		perror("malloc");
+		(*fptr[0])((void*)"failure"); //exitServer
+	}
+
+	//create Pipe
+	infra->pipe = (int*)malloc(sizeof(int)*2); //allocate space for pipe
+	if(!infra->pipe)
+	{
+		perror("malloc");
+		free(infra);
+		(*fptr[0])((void*)"failure"); //exitServer
+	}
+
+	ret=pipe(infra->pipe);//crete pipe using pipe system call
+	if(ret==-1)
+	{
+		perror("pipe");
+		free(infra->pipe);
+		free(infra);
+		(*fptr[0])((void*)"failure"); //exitServer
+	}
+
+	//creat FIFO
+	if(access(FIFONAME,F_OK)==-1)
+	{
+		ret=mkfifo(FIFONAME, 0666);
+		if(ret==-1)
+		{
+			perror("mkfifo");
+			free(infra->pipe);
+			free(infra);
+			(*fptr[0])((void*)"failure"); //exitServer
+		}
+		printf("FIFO created\n");
+	}
+	infra->fifo = (char*)malloc(sizeof(char)*20); //allocate name for fifo name
+	if(!infra->fifo)
+	{
+		perror("malloc");
+		close(*(infra->pipe+0));
+		close(*(infra->pipe+1));
+		free(infra->pipe);
+		free(infra);
+		(*fptr[0])((void*)"failure"); //exitServer
+	}
+	memset(infra->fifo,'\0',20);
+	strcpy(infra->fifo, "requestFIFO");
+
+	//create MQ
+
+	infra->msgQue=msgget((key_t)1111, 0666|IPC_CREAT);
+	if(infra->msgQue==-1)
+	{
+		perror("msgget");
+		close(*(infra->pipe+0));
+		close(*(infra->pipe+1));
+		free(infra->pipe);
+		free(infra->fifo);
+		free(infra);
+		(*fptr[0])((void*)"failure"); //exitServer 
+	}
+	//create Sm
+	infra->shrdMem=shmget(SHRDMEM, sizeof(Result), 0666|IPC_CREAT);
+	if(!infra->shrdMem)
+	{
+		perror("shmget");
+		close(*(infra->pipe+0));
+		close(*(infra->pipe+1));
+		free(infra->pipe);
+		free(infra->fifo);
+		free(infra);
+		(*fptr[0])((void*)"failure"); //exitServer 
+	}
+	infra->msPtr=(void*)shmat(infra->shrdMem,NULL,0);//attach the shared memory
+	if(infra->msPtr==(void*)-1)
+	{
+		perror("shmat");
+		close(*(infra->pipe+0));
+		close(*(infra->pipe+1));
+		free(infra->pipe);
+		free(infra->fifo);
+		free(infra);
+		(*fptr[0])((void*)"failure"); //exitServer
+	}
+
+		//create semaphore
+		union semun semUnion[4];
+		infra->semid=semget((key_t)SEMID,4,0666|IPC_CREAT);
+		if(infra->semid==-1)
+		{
+		perror("semget");
+		close(*(infra->pipe+0));
+		close(*(infra->pipe+1));
+		free(infra->pipe);
+		free(infra->fifo);
+		free(infra);
+		(*fptr[0])((void*)"failure"); 
+		}
+	//initialising semaphore
+	for(i=0;i<4;i++)
+	{
+	infra->suval[i].val=1;
+	ret=semctl(infra->semid,i,SETVAL,infra->suval[i]);
+	if(ret!=0)
+	{
+	perror("semctl");
+	close(*(infra->pipe+0));
+	close(*(infra->pipe+1));
+	free(infra->pipe);
+	free(infra->fifo);
+	free(infra);
+	(*fptr[0])((void*)"failure");
+	}
+	}
+	ret=sem_init(&infra->tsem,0,1);
+	{
+		if(ret==-1)
+		{
+			perror("sem_init");
+			close(*(infra->pipe+0));
+			close(*(infra->pipe+1));
+			free(infra->pipe);
+			free(infra->fifo);
+			free(infra);
+			(*fptr[0])((void*)"failure");
+
+		}
+
+	}
+	
+
+	// create shared memory to store process semaphore
+    // we need to store the semaphore here so size of semaphore
+	infra->smKey1 = shmget((key_t)KEY_SHM1, sizeof(sem_t), IPC_CREAT|0666);
+    if(infra->smKey1 == -1)
+    {
+        perror("shmget");
+        free(infra->pipe);
+        free(infra->fifo);
+        free(infra);
+        (*fptr[0])((void*)"failure");
+    }
+    infra->smptr1 = shmat(infra->smKey1, NULL, 0);
+    if(!infra->smptr1)
+        {
+            perror("shmget");
+            free(infra->pipe);
+            free(infra->fifo);
+            free(infra);
+            (*fptr[0])((void*)"failure");
+        }
+
+	// shared semaphore, put it into shared memory
+    ret = sem_init((sem_t*)infra->smptr1, 1, 1);
+    if(ret == -1)
+    {
+        perror("sem_init");
+        free(infra->pipe);
+        free(infra->fifo);
+       // free(infra->smKey1);
+       // free(infra->msgQue);
+        (*fptr[0])((void*)"failure");
+    }
+
+	//creating mutex
+	if (pthread_mutex_init(&infra->my_mutex, NULL) != 0)
+	{
+       perror("pthread initililisation failed");
+         free(infra->pipe);
+         free(infra->fifo);
+        // free(infra->smKey1);
+        // free(infra->msgQue);
+        (*fptr[0])((void*)"failure");
+
+
+	}
+
+#ifdef DEBUG
+	printf("%s: End.\n",__func__);
+#endif
+	return infra;
+}

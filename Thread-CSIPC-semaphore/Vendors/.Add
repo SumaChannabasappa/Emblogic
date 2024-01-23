@@ -1,0 +1,67 @@
+#include"../Common/headers.h"
+#include"../Common/dataStructures.h"
+#include"../Common/defaults.h"
+
+int main(int argc,char *argv[])
+{
+	int fd,ret,smKey;
+	Request req;
+	Infra *infra;
+	//Result *res;
+   Result *smp;
+//	Result result;
+
+ printf("%s:%s: Begin.\n",__FILE__,__func__);
+
+ if(argc!=2)
+ {
+  printf("%s: Insufficient Arguments\n",__func__);
+  printf("%s: Pass the read file-descriptor.\n",__func__);
+  return -1;
+ }
+ fd=atoi(argv[1]);
+ ret=read(fd,&req,sizeof(Request));
+ if(ret==-1)
+ {
+	 perror("read");
+     exit(EXIT_FAILURE);		 
+
+ }
+ //sem_post(&infra->tsem);
+ //printf("Process Request Thread Semaphore released\n");
+ printf("%s:%ld\n",__func__,req.cpid);
+	// printf("%s:%s: Read request %d Bytes\n",__FILE__,__func__,ret);
+	 if(req.oper!='+')
+	 {
+      printf("%s: %s: Invalid request\n",__FILE__,__func__);
+	  close(fd);
+	  exit(EXIT_FAILURE);
+	 }
+  
+	 smKey=shmget(SHRDMEM, sizeof(Result),0666|IPC_CREAT);
+
+	 if(smKey == -1)
+	 {
+      perror("shmget");
+	  close(fd);
+	  exit(EXIT_FAILURE);
+	 }
+ 
+	 smp=(Result*)shmat(smKey,NULL,0);
+	 if(smp==(Result*)-1)
+     {
+      perror("shmat");
+      close(fd);
+      exit(EXIT_FAILURE);
+     }
+
+	 //res=(Result*)smp;
+
+     smp->cpid=req.cpid;
+     smp->result=req.opr1+req.opr2;
+	 printf("%s:%s:%.2f:\n",__FILE__,__func__,smp->result);
+
+ printf("%s:%s: End.\n",__FILE__,__func__);
+ return 0;
+}
+
